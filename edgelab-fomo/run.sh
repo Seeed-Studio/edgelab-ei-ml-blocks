@@ -66,39 +66,49 @@ NUM_CLASS=`jq '.categories | length' /tmp/data/train/_annotations.coco.json`
 IMG_HIGHT=`jq '.images[0].height' /tmp/data/train/_annotations.coco.json`
 IMG_WIDTH=`jq '.images[0].width' /tmp/data/train/_annotations.coco.json`
 
-cd /app/Edgelab
+cd /app/EdgeLab
 
-# add the current directory to the PYTHONPATH
-export PYTHONPATH=/app/Edgelab:$PYTHONPATH
+echo "Training model"
 
-#copy the config file to the config directory
-cp $SCRIPTPATH/fomo_mobnetv2_x8_ei.py /app/Edgelab/configs/fomo/fomo_mobnetv2_x8_ei.py
-
-python3 -u tools/train.py mmdet configs/fomo/fomo_mobnetv2_x8_ei.py \
+python3 tools/train.py det configs/fomo/fomo_mobnetv2_0.35_x8_abl_coco.py \
     --cfg-options \
-    runner.max_epochs=$EPOCHS   \
-    model.head.num_classes=$NUM_CLASS \
-    optimizer.lr=$LEARNING_RATE \
-    data.train.dataset.pipeline.2.img_scale=\($IMG_HIGHT,$IMG_WIDTH\) \
-    data.val.pipeline.1.img_scale=\($IMG_HIGHT,$IMG_WIDTH\) \
-    data.test.pipeline.1.img_scale=\($IMG_HIGHT,$IMG_WIDTH\) 
+    data_root='/tmp/data' \
+    epochs=$EPOCHS \
+    lr=$LEARNING_RATE \
+    height=$IMG_HIGHT \
+    width=$IMG_WIDTH \
+    num_classes=$NUM_CLASS 
+
 
 echo "Training complete"
-echo ""
 
 mkdir -p $OUT_DIRECTORY
 
-#copy the model to the output directory
-cp /app/Edgelab/work_dirs/fomo_mobnetv2_x8_ei/exp1/latest.pth $OUT_DIRECTORY/model.pth
+# copy the model to the output directory
+cp  "$(cat /app/EdgeLab/work_dirs/fomo_mobnetv2_0.35_x8_abl_coco/last_checkpoint)" $OUT_DIRECTORY/model.pth
 
 # convert to .onnx
 # python3 tools/torch2onnx.py --task mmdet --shape $IMG_HIGHT --config configs/fomo/fomo_mobnetv2_x8_ei.py --checkpoint work_dirs/fomo_mobnetv2_x8_ei/exp1/latest.pth 
-# cp /app/Edgelab/work_dirs/fomo_mobnetv2_x8_ei/exp1/latest.onnx $OUT_DIRECTORY/model.onnx
+# cp /app/EdgeLab/work_dirs/fomo_mobnetv2_x8_ei/exp1/latest.onnx $OUT_DIRECTORY/model.onnx
 
-python3 ./tools/export.py mmdet /app/Edgelab/work_dirs/fomo_mobnetv2_x8_ei/exp1/fomo_mobnetv2_x8_ei.py  --tflite_type fp32 --weights $OUT_DIRECTORY/model.pth --shape $IMG_HIGHT --data /tmp/data/train
+python3 ./tools/torch2tflite.py /app/EdgeLab/configs/fomo/fomo_mobnetv2_0.35_x8_abl_coco.py --checkpoint $OUT_DIRECTORY/model.pth --type float32  \
+    --cfg-options \
+    data_root='/tmp/data' \
+    epochs=$EPOCHS \
+    lr=$LEARNING_RATE \
+    height=$IMG_HIGHT \
+    width=$IMG_WIDTH \
+    num_classes=$NUM_CLASS 
 
-mv $OUT_DIRECTORY/model_fp32.tflite $OUT_DIRECTORY/model.tflite
+mv ./work_dirs/fomo_mobnetv2_0.35_x8_abl_coco/model.pth_float32.tflite $OUT_DIRECTORY/model.tflite
 
-python3 ./tools/export.py mmdet /app/Edgelab/work_dirs/fomo_mobnetv2_x8_ei/exp1/fomo_mobnetv2_x8_ei.py  --tflite_type int8 --weights $OUT_DIRECTORY/model.pth --shape $IMG_HIGHT --data /tmp/data/train
+python3 ./tools/torch2tflite.py /app/EdgeLab/configs/fomo/fomo_mobnetv2_0.35_x8_abl_coco.py --checkpoint $OUT_DIRECTORY/model.pth  --type int8 \
+    --cfg-options \
+    data_root='/tmp/data' \
+    epochs=$EPOCHS \
+    lr=$LEARNING_RATE \
+    height=$IMG_HIGHT \
+    width=$IMG_WIDTH \
+    num_classes=$NUM_CLASS 
 
-mv $OUT_DIRECTORY/model_int8.tflite $OUT_DIRECTORY/model_quantized_int8_io.tflite
+mv ./work_dirs/fomo_mobnetv2_0.35_x8_abl_coco/model.pth_int8.tflite $OUT_DIRECTORY/model_quantized_int8_io.tflite
